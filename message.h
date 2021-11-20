@@ -8,14 +8,14 @@
 
 #define MAX_NAME 32
 #define MAX_DATA 512
-#define BUF_SIZE 1000
+#define BUFF_SIZE 1000
 
 // Message Struct
 struct message{
     unsigned int type; // type of the message
     unsigned int size; // length of the data
-    unsigned char source[MAX_NAME]; // ID of the client sending the message
-    unsigned char data[MAX_DATA];
+    char source[MAX_NAME]; // ID of the client sending the message
+    char data[MAX_DATA];
 };
 
 // Message Type
@@ -42,7 +42,7 @@ enum messageType{
  */
 void packetToString(const struct message *msg, char *dest) {
     // Initialize buffer
-    memset(dest, '\0', sizeof(char) * BUF_SIZE);
+    memset(dest, '\0', sizeof(char) * BUFF_SIZE);
 
     unsigned long index;
 
@@ -70,39 +70,53 @@ void packetToString(const struct message *msg, char *dest) {
  * @param src
  * @param destMsg
  */
-void stringToPacket(const char *src, struct message *destMsg){
-    int start = 0, end = 0;
-    char* buf;
+void stringToPacket(const char *src, struct message *dest_packet){
+    memset(dest_packet -> data, 0, MAX_DATA);
+    if(strlen(src) == 0) return;
 
-    // Extract type number from first Position
-    while(src[end] != ':') end++;
-    buf = malloc((end - start) * sizeof(char) + 1);
-    memcpy(buf, &src[start], end - start);
-    destMsg->type = atoi(buf);
-    end++;
-    start = end;
-    free(buf);
+    // Compile Regex to match ":"
+    regex_t regex;
+    if(regcomp(&regex, "[:]", REG_EXTENDED)) {
+        fprintf(stderr, "Could not compile regex\n");
+    }
 
-    // Extract size number from second Position
-    while(src[end] != ':') end++;
-    buf = malloc((end - start) * sizeof(char) + 1);
-    memcpy(buf, &src[start], end - start);
-    destMsg->size = atoi(buf);
-    end++;
-    start = end;
-    free(buf);
+    // Match regex to find ":"
+    regmatch_t pmatch[1];
+    long long cursor = 0;
+    const int regBfSz = MAX_DATA;
+    char buf[regBfSz];     // Temporary buffer for regex matching
 
-    // Extract source from third Position
-    while(src[end] != ':') end++;
-    buf = malloc((end - start) * sizeof(char) + 1);
-    memcpy(buf, &src[start], end - start);
-    //destMsg->source[] = 0; Not finished
-    end++;
-    start = end;
-    free(buf);
+    // Match type
+    if(regexec(&regex, src + cursor, 1, pmatch, REG_NOTBOL)) {
+        fprintf(stderr, "Error matching regex\n");
+        exit(1);
+    }
+    memset(buf, 0, regBfSz * sizeof(char));
+    memcpy(buf, src + cursor, pmatch[0].rm_so);
+    dest_packet -> type = atoi(buf);
+    cursor += (pmatch[0].rm_so + 1);
 
-    // Lastly, Extract data from Position left
-    memcpy(destMsg->data, &src[start], destMsg->size);
+    // Match size
+    if(regexec(&regex, src + cursor, 1, pmatch, REG_NOTBOL)) {
+        fprintf(stderr, "Error matching regex\n");
+        exit(1);
+    }
+    memset(buf, 0, regBfSz * sizeof(char));
+    memcpy(buf, src + cursor, pmatch[0].rm_so);
+    dest_packet -> size = atoi(buf);
+    cursor += (pmatch[0].rm_so + 1);
+
+    // Match source
+    if(regexec(&regex, src + cursor, 1, pmatch, REG_NOTBOL)) {
+        fprintf(stderr, "Error matching regex\n");
+        exit(1);
+    }
+    memcpy(dest_packet -> source, src + cursor, pmatch[0].rm_so);
+    dest_packet -> source[pmatch[0].rm_so] = 0;
+    cursor += (pmatch[0].rm_so + 1);
+
+    // Match data
+    memcpy(dest_packet -> data, src + cursor, dest_packet -> size);
 }
 
 #endif
