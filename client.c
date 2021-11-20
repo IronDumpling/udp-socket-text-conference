@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 // Multi-threading
-#include <signal.h>
+//#include <signal.h>
 #include <pthread.h>
 // Others
 #include "message.h"
@@ -101,7 +101,7 @@ int main()
         }
         // Command 7: Quit
         else if(!strcmp(input, QUIT_CMD)){
-            quit(socketFD);
+            logOut(&socketFD, &recvThread);
             break;
         }
         // Command 8: Send Text
@@ -195,12 +195,12 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
     // Corner Case 1: Too Few Arguments
     if(!clientID || !password || !serverIP || !serverPort){
-        perror("Too few arguments: /login <client_id> <password> <server_ip> <server_port>\n");
+        perror("Too few arguments: /login <client_id> <password> <server_ip> <server_port>");
         return;
     }
     // Corner Case 2: Re-Login
     else if (*socketFD != INVALID_SOCKET) {
-        perror("Already login.\n");
+        perror("Already login");
         return;
     }
     // Normal Case
@@ -215,33 +215,37 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
         // Step 2. Set up Address Info
         if(getaddrinfo(serverIP, serverPort, &hints, &servInfo) != 0){
-            perror("Get address failed.\n");
+            perror("Get address failed");
             return;
         }
 
         // Step 3. Set up Connection (Until Succeed)
-        struct addrinfo *p = servInfo;
-        // Get Socket
-        *socketFD = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if(*socketFD == -1) {
-            perror("Set client socket failed.\n");
-            return;
-        }
+        struct addrinfo *p;
 
-        // Set Connection
-        if(connect(*socketFD, p->ai_addr, p->ai_addrlen) == -1) {
-            close(*socketFD);
-            perror("Connect server failed.\n");
-            return;
+        for(p = servInfo; p != NULL; p = p->ai_next){
+            // Get Socket
+            *socketFD = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+            if(*socketFD == -1) {
+                perror("Set client socket failed");
+                continue;
+            }
+
+            // Set Connection
+            if(connect(*socketFD, p->ai_addr, p->ai_addrlen) == -1) {
+                close(*socketFD);
+                perror("Connect server failed");
+                continue;
+            }
+            break;
         }
 
         // Get Socket Info failed
-//        if(!p) {
-//            perror("Connect addrInfo Failed.\n");
-//            close(*socketFD);
-//            *socketFD = INVALID_SOCKET;
-//            return;
-//        }
+        if(!p) {
+            perror("Connect addrInfo Failed");
+            close(*socketFD);
+            *socketFD = INVALID_SOCKET;
+            return;
+        }
 
         // Get Socket Info Succeed
         inet_ntop(p->ai_family, getInAddr((struct sockaddr*)p->ai_addr), s, sizeof(s));
@@ -260,7 +264,7 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
         // Step 5. Send Message
         if(send(*socketFD, recvBuff, BUFF_SIZE - 1, 0) ==  -1) {
-            perror("Send message failed.\n");
+            perror("Send message failed");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
@@ -269,7 +273,7 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
         // Receive Message
         unsigned int length = recv(*socketFD, recvBuff, BUFF_SIZE - 1, 0);
         if(length == -1) {
-            perror("Receive message failed.\n");
+            perror("Receive message failed");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
@@ -283,12 +287,12 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
         if(Message.type == LO_ACK && pthread_create(recvThread, NULL, receive, socketFD) == 0) {
             printf("Login succeed.\n");
         } else if(Message.type == LO_NAK) {
-            perror("Login failed.\n");
+            perror("Login failed");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
         } else {
-            perror("Unexpected message received.\n");
+            perror("Unexpected message received");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
@@ -303,7 +307,7 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
  */
 void logOut(int *socketFD, pthread_t *recvThread) {
     if(*socketFD == INVALID_SOCKET){
-        perror("Haven't login yet.\n");
+        perror("Haven't login yet");
         return;
     }
 
@@ -314,12 +318,12 @@ void logOut(int *socketFD, pthread_t *recvThread) {
     packetToString(&Message, recvBuff);
 
     if(send(*socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1) {
-        perror("Send message failed.\n");
+        perror("Send message failed");
         return;
     }
 
-    if(pthread_cancel(*recvThread)) {
-        perror("Logout failed.\n");
+    if(pthread_cancel(*recvThread) != 0) {
+        perror("Logout failed");
     } else {
         printf("Logout succeed.\n");
     }
@@ -337,12 +341,12 @@ void logOut(int *socketFD, pthread_t *recvThread) {
 void joinSession (char *input, int *socketFD) {
     // Corner Case 1.
     if(*socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
+        perror("Haven't login yet");
         return;
     }
     // Corner Case 2.
     else if (inSession){
-        perror("Already joined a session.\n");
+        perror("Already joined a session");
         return;
     } else{
         // Get Input
@@ -351,7 +355,7 @@ void joinSession (char *input, int *socketFD) {
 
         // Corner Case 3.
         if(!sessionID){
-            perror("Too few arguments: /joinsession <session_id>\n");
+            perror("Too few arguments: /joinsession <session_id>");
         }
         // Common Case
         else{
@@ -366,7 +370,7 @@ void joinSession (char *input, int *socketFD) {
 
             // Send to Server
             if(send(*socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-                perror("Send Message Failed.\n");
+                perror("Send Message Failed");
                 return;
             }
 
@@ -383,12 +387,12 @@ void joinSession (char *input, int *socketFD) {
 void leaveSession (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
+        perror("Haven't login yet");
         return;
     }
     // Corner Case 2.
     else if (!inSession){
-        perror("Haven't joined a session yet.\n");
+        perror("Haven't joined a session yet");
         return;
     } else{
         // Fill Message struct
@@ -401,7 +405,7 @@ void leaveSession (int socketFD) {
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed.\n");
+            perror("Send Message Failed");
             return;
         }
 
@@ -417,12 +421,12 @@ void leaveSession (int socketFD) {
 void createSession (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
+        perror("Haven't login yet");
         return;
     }
     // Corner Case 2.
     else if (inSession){
-        perror("Already joined a session.\n");
+        perror("Already joined a session");
         return;
     } else{
         // Fill Message struct
@@ -435,7 +439,7 @@ void createSession (int socketFD) {
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed.\n");
+            perror("Send Message Failed");
             return;
         }
     }
@@ -448,7 +452,7 @@ void createSession (int socketFD) {
 void list (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
+        perror("Haven't login yet");
         return;
     }
     // Common Case
@@ -463,27 +467,14 @@ void list (int socketFD) {
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed.\n");
+            perror("Send Message Failed");
             return;
         }
     }
 }
 
 /**
- * Function 7. Quit
- * @param socketFD
- */
-void quit(int socketFD) {
-    // Corner Case 1.
-    if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
-        return;
-    }
-
-}
-
-/**
- * Function 8.Send Text
+ * Function 7.Send Text
  * @param input
  * @param socketFD
  */

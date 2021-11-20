@@ -14,8 +14,8 @@
 struct message{
     unsigned int type; // type of the message
     unsigned int size; // length of the data
-    char source[MAX_NAME]; // ID of the client sending the message
-    char data[MAX_DATA];
+    unsigned char source[MAX_NAME]; // ID of the client sending the message
+    unsigned char data[MAX_DATA];
 };
 
 // Message Type
