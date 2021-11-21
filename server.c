@@ -4,29 +4,24 @@
 #include <string.h>
 #include <stdbool.h>
 #include <sys/socket.h>
-#include <sys/time.h>
+#include <signal.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <signal.h>
-#include <pthread.h>
 #include "message.h"
 #include "database.h"
 
 
 /* global variables */
-int session_count = 1;
-int online_count = 0;
-User *user_list = NULL;
-User *online_user_list = NULL;
-Session *session_list = NULL;
-
-
-/* thread mutex variables */
 pthread_mutex_t lock_session_list = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_online_user = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock_session_count = PTHREAD_MUTEX_INITIALIZER;
+int session_count = 1;
+User *user_list = NULL;
+User *online_user_list = NULL;
+Session *session_list = NULL;
 
 
 /* called when new connections are established. */
@@ -75,19 +70,19 @@ void *stub_client(void *arg) {
                 to_send = true;
                 strcpy((char *)(send_packet.data), "Please login before making other manipulations.");
             } else {
-                strcpy(new_client->uname, (char *)(recv_packet.source));
-                strcpy(new_client->pwd, (char *)(recv_packet.data));
-                printf("User ID: %s\n", new_client->uname);
-                printf("User password: %s\n", new_client->pwd);
+                strcpy(new_client->UID, (char *)(recv_packet.source));
+                strcpy(new_client->password, (char *)(recv_packet.data));
+                printf("User ID: %s\n", new_client->UID);
+                printf("User password: %s\n", new_client->password);
 
                 /* check if this client has logged in */
-                bool valid_user = is_valid_user(user_list, new_client);
-                bool multiple_login = in_list(online_user_list, new_client);
-                bool password_correctness = in_list(user_list, new_client);
+                bool valid_user = user_check(user_list, new_client, 0);
+                bool multiple_login = user_check(online_user_list, new_client, 1);
+                bool password_correctness = user_check(user_list, new_client, 1);
 
                 if(valid_user && !multiple_login) {
-                    strcpy(source, new_client->uname);
-                    printf("User ID: %s, has successfully logged in.\n", new_client->uname);
+                    strcpy(source, new_client->UID);
+                    printf("User ID: %s, has successfully logged in.\n", new_client->UID);
                     
                     to_send = true;
                     online = true;
@@ -98,7 +93,7 @@ void *stub_client(void *arg) {
                     memcpy(tmp, new_client, sizeof(User));
                     
                     pthread_mutex_lock(&lock_online_user);
-                    online_user_list = add_user(online_user_list, tmp);
+                    online_user_list = add_user(tmp, online_user_list);
                     pthread_mutex_unlock(&lock_online_user);
                 } else {
                     to_send = true;
@@ -119,20 +114,20 @@ void *stub_client(void *arg) {
             }
         } else if(recv_packet.type == JOIN) {
             int session_id = atoi((recv_packet.data));
-            printf("User %s is requesting to join session NO.%d...\n", new_client->uname, session_id);
+            printf("User %s is requesting to join session NO.%d...\n", new_client->UID, session_id);
 
             to_send = true;
             /* nonexistent session */
-            if(!isValidSession(session_list, session_id)) {
+            if(!session_check(session_list, session_id)) {
                 send_packet.type = JN_NAK;
                 strcpy(send_packet.data, "nonexistent session");
-                printf("User %s Failed to join session NO.%d due to nonexistent session.\n", new_client->uname, session_id);
+                printf("User %s Failed to join session NO.%d due to nonexistent session.\n", new_client->UID, session_id);
             } 
             /* multiple joining */
-            else if(inSession(session_list, session_id, new_client)) {
+            else if(user_in_session(session_list, session_id, new_client)) {
                 send_packet.type = JN_NAK;
                 strcpy(send_packet.data, "multiple joining");
-                printf("User %s Failed to join session NO.%d due to multiple joining.\n", new_client->uname, session_id);
+                printf("User %s Failed to join session NO.%d due to multiple joining.\n", new_client->UID, session_id);
             }
             /* successfully joining */
             else {
@@ -140,52 +135,52 @@ void *stub_client(void *arg) {
                 strcpy(send_packet.data, recv_packet.data);
                 
                 /* update sessions the current client has joined */
-                new_client->sessJoined = init_session(new_client->sessJoined, session_id);
+                new_client->session_enrolment = add_session(new_client->session_enrolment, session_id);
 
                 /* insert this user into the corresponding session */
                 pthread_mutex_lock(&lock_session_list);
                 session_list = join_session(session_list, session_id, new_client);
                 pthread_mutex_unlock(&lock_session_list);
                 
-                printf("User %s Successfully joined session NO.%d.\n", new_client -> uname, session_id);
+                printf("User %s Successfully joined session NO.%d.\n", new_client->UID, session_id);
 
                 /* update online user status */
                 pthread_mutex_lock(&lock_online_user);
                 for(User *p = online_user_list; p; p = p->next) {
-                    if(strcmp(source, p->uname) == 0) {
-                        p->sessJoined = init_session(p->sessJoined, session_id);
-                        p->inSession = true;
+                    if(strcmp(source, p->UID) == 0) {
+                        p->session_enrolment = add_session(p->session_enrolment, session_id);
+                        p->in_session = true;
                         break;
                     }
                 }
                 pthread_mutex_unlock(&lock_online_user);
             }
         } else if(recv_packet.type == LEAVE_SESS) {
-            printf("User %s is requesting to leave all joined sessions.\n", new_client->uname);
+            printf("User %s is requesting to leave all joined sessions.\n", new_client->UID);
 
             /* delete current joined session from the user */
-            if (new_client->sessJoined != NULL) {
+            if (new_client->session_enrolment != NULL) {
                 pthread_mutex_lock(&lock_session_list);
-                session_list = leave_session(session_list, new_client->sessJoined->sessionId, new_client);
+                session_list = leave_session(session_list, new_client->session_enrolment->SID, new_client);
                 pthread_mutex_unlock(&lock_session_list);
-                printf("User %s has left session %d.\n", new_client -> uname, new_client->sessJoined->sessionId);
-                free(new_client->sessJoined);
-                new_client->sessJoined = NULL;
+                printf("User %s has left session %d.\n", new_client->UID, new_client->session_enrolment->SID);
+                free(new_client->session_enrolment);
+                new_client->session_enrolment = NULL;
             }
 
             /* update global user state */
             pthread_mutex_lock(&lock_online_user);
             for(User *p = online_user_list; p; p = p->next) {
-                if(strcmp(p->uname, source) == 0) {
-                    destroy_session_list(p->sessJoined);
-                    p->sessJoined = NULL;
-                    p->inSession = false;
+                if(strcmp(p->UID, source) == 0) {
+                    free_session_list(p->session_enrolment);
+                    p->session_enrolment = NULL;
+                    p->in_session = false;
                     break;
                 }
             }
             pthread_mutex_unlock(&lock_online_user);
         } else if(recv_packet.type == NEW_SESS) {
-            printf("User %s is requesting to create a new session.\n", new_client->uname);
+            printf("User %s is requesting to create a new session.\n", new_client->UID);
             
             send_packet.type = NS_ACK;
             to_send = true;
@@ -193,21 +188,21 @@ void *stub_client(void *arg) {
 
             /* Update global session_list */
             pthread_mutex_lock(&lock_session_list);
-            session_list = init_session(session_list, session_count);
+            session_list = add_session(session_list, session_count);
             pthread_mutex_unlock(&lock_session_list);
 
             /* User join just created session */
             pthread_mutex_lock(&lock_session_list);
-            new_client->sessJoined = init_session(new_client->sessJoined, session_count);
+            new_client->session_enrolment = add_session(new_client->session_enrolment, session_count);
             session_list = join_session(session_list, session_count, new_client);
             pthread_mutex_unlock(&lock_session_list);
 
             /* update online user status */
             pthread_mutex_lock(&lock_online_user);
             for(User *p = online_user_list; p; p = p->next) {
-                if(strcmp(p -> uname, source) == 0) {
-                    p->inSession = true;
-                    p->sessJoined = init_session(p->sessJoined, session_count);
+                if(strcmp(p->UID, source) == 0) {
+                    p->in_session = true;
+                    p->session_enrolment = add_session(p->session_enrolment, session_count);
                     break;
                 }
             }
@@ -218,13 +213,13 @@ void *stub_client(void *arg) {
             session_count++;
             pthread_mutex_unlock(&lock_session_count);
 
-            printf("User %s has successfully created session NO.%d.\n", new_client->uname, session_count - 1);
+            printf("User %s has successfully created session NO.%d.\n", new_client->UID, session_count - 1);
         } else if(recv_packet.type == MESSAGE) {
-            printf("User %s is requesting to send message.\n", new_client -> uname);
+            printf("User %s is requesting to send message.\n", new_client->UID);
             to_send = false;
             /* pack up the packet to send */
             send_packet.type = MESSAGE;
-            strcpy(send_packet.source, new_client -> uname);
+            strcpy(send_packet.source, new_client->UID);
             strcpy(send_packet.data, recv_packet.data);
             send_packet.size = strlen(send_packet.data);
 
@@ -232,11 +227,11 @@ void *stub_client(void *arg) {
             packetToString(&send_packet, buffer);
 
             /* broadcast */
-            for(Session *p = new_client->sessJoined; p; p = p->next) {
-                Session *sess_to_send = isValidSession(session_list, p->sessionId);
+            for(Session *p = new_client->session_enrolment; p; p = p->next) {
+                Session *sess_to_send = session_check(session_list, p->SID);
                 if(sess_to_send == NULL) continue;
-                for(User *usr = sess_to_send -> usr; usr != NULL; usr = usr -> next) {
-                    int sd = send(usr -> sockfd, buffer, BUF_SIZE-1, 0);
+                for(User *curr_user = sess_to_send->enrol_list; curr_user; curr_user = curr_user->next) {
+                    int sd = send(curr_user -> sockfd, buffer, BUF_SIZE-1, 0);
                     if(sd < 0) {
                         perror("Failed when sending...\n");
                         exit(1);
@@ -244,16 +239,16 @@ void *stub_client(void *arg) {
                 }
             }
         } else if (recv_packet.type == QUERY) {
-            printf("User %s is requesting to query a list.\n", new_client->uname);
+            printf("User %s is requesting to query a list.\n", new_client->UID);
 
             int cursor = 0;
             send_packet.type = QU_ACK;
             to_send = true;
 
             for(User *p = online_user_list; p; p = p->next) {
-                cursor += sprintf((char *)(send_packet.data) + cursor, "%s", p->uname);
-                for(Session *ss = p->sessJoined; ss; ss = ss->next) {
-                    cursor += sprintf(send_packet.data + cursor, "\t%d", ss->sessionId);
+                cursor += sprintf((char *)(send_packet.data) + cursor, "%s", p->UID);
+                for(Session *ss = p->session_enrolment; ss; ss = ss->next) {
+                    cursor += sprintf(send_packet.data + cursor, "\t%d", ss->SID);
                 }
                 send_packet.data[cursor++] = '\n';
             }
@@ -263,7 +258,7 @@ void *stub_client(void *arg) {
 
         /* send packet back if applied */
         if(to_send) {
-            memcpy(send_packet.source, new_client->uname, UNAMELEN);
+            memcpy(send_packet.source, new_client->UID, 32);
             send_packet.size = strlen(send_packet.data);
             memset(buffer, 0, BUF_SIZE);
             packetToString(&send_packet, buffer);
@@ -280,24 +275,24 @@ void *stub_client(void *arg) {
 
     /* client quits, so remove it from any data structure containing it */
     if(online){
-        printf("User %s has exited.\n", new_client->uname);
+        printf("User %s has exited.\n", new_client->UID);
         
-        for(Session *curr = new_client->sessJoined; curr; curr = curr->next) {
+        for(Session *curr = new_client->session_enrolment; curr; curr = curr->next) {
             pthread_mutex_lock(&lock_session_list);
-            session_list = leave_session(session_list, curr->sessionId, new_client);
+            session_list = leave_session(session_list, curr->SID, new_client);
             pthread_mutex_unlock(&lock_session_list);
         }
 
         for(User *p = online_user_list; p; p = p->next) {
-            if(strcmp(source, p->uname) == 0) {
-                destroy_session_list(p->sessJoined);
+            if(strcmp(source, p->UID) == 0) {
+                free_session_list(p->session_enrolment);
                 break;
             }
         }
         
         online_user_list = remove_user(online_user_list, new_client);
 
-        destroy_session_list(new_client->sessJoined);
+        free_session_list(new_client->session_enrolment);
         
         free(new_client);
     }
@@ -318,8 +313,8 @@ int main() {
     FILE* f_ul = fopen("user_data", "r");
     while (true) {
         User* unit = malloc(sizeof(User));
-        if (fscanf(f_ul, "%s %s\n", unit->uname, unit->pwd) != EOF) {
-            user_list = add_user(user_list, unit);
+        if (fscanf(f_ul, "%s %s\n", unit->UID, unit->password) != EOF) {
+            user_list = add_user(unit, user_list);
         } else {
             free(unit);
             break;
@@ -372,7 +367,7 @@ int main() {
 
     /* Listen on incoming port, 12 connections available in the queue. */
     int ls = listen(sockfd, 12);
-    if (ls == -1) {
+    if (ls < 0) {
         perror("Failed to listen...");
         exit(1);
     }
@@ -390,13 +385,13 @@ int main() {
         }
 
         /* create a new thread */
-        pthread_create(&(new_client -> p), NULL, stub_client, (void *)new_client);
+        pthread_create(&(new_client->thu), NULL, stub_client, (void *)new_client);
     }
 
     /* release allocated memory */
-    destroy_userlist(user_list);
-    destroy_userlist(online_user_list);
-    destroy_session_list(session_list);
+    free_user_list(user_list);
+    free_user_list(online_user_list);
+    free_session_list(session_list);
     close(sockfd);
     printf("Server quits...\n");
     return 0;
