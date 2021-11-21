@@ -64,7 +64,7 @@ User *remove_user(User *user_list, User const *curr_user) {
     
     if(strcmp(user_list->UID, curr_user->UID) == 1) {
         User *curr = user_list;
-        User *prev;
+        User *prev = user_list;
         while(curr) {
             if(strcmp(curr->UID, curr_user->UID) == 0) {
                 prev->next = curr->next;
@@ -178,9 +178,16 @@ Session *join_session(Session *session_list, int session_id, const User *user) {
     Session *curr = session_check(session_list, session_id);
     if (curr == NULL) return NULL;
 
+    /* allocate a copy of the user to avoid corruption */
     User *new_user = malloc(sizeof(User));
-    memcpy((void *)new_user, (void *)user, sizeof(User));
-
+    strcpy(new_user->UID, user->UID);
+    strcpy(new_user->password, user->password);
+    new_user->in_session = user->in_session;
+    new_user->next = NULL;
+    new_user->session_enrolment = user->session_enrolment;
+    new_user->thu = user->thu;
+    new_user->sockfd = user->sockfd;
+    
     curr->enrol_list = add_user(new_user, curr->enrol_list);
 
     return session_list;
