@@ -68,7 +68,7 @@ void *stub_client(void *arg) {
             if(recv_packet.type != LOGIN) {
                 send_packet.type = LO_NAK;
                 to_send = true;
-                strcpy((char *)(send_packet.data), "Please login before making other manipulations.");
+                strcpy((send_packet.data), "Please login before making other manipulations.");
             } else {
                 strcpy(new_client->UID, (char *)(recv_packet.source));
                 strcpy(new_client->password, (char *)(recv_packet.data));
@@ -164,15 +164,14 @@ void *stub_client(void *arg) {
                 session_list = leave_session(session_list, new_client->session_enrolment->SID, new_client);
                 pthread_mutex_unlock(&lock_session_list);
                 printf("User %s has left session %d.\n", new_client->UID, new_client->session_enrolment->SID);
-                free(new_client->session_enrolment);
                 new_client->session_enrolment = NULL;
+                new_client->in_session = false;
             }
 
             /* update global user state */
             pthread_mutex_lock(&lock_online_user);
             for(User *p = online_user_list; p; p = p->next) {
                 if(strcmp(p->UID, source) == 0) {
-                    free_session_list(p->session_enrolment);
                     p->session_enrolment = NULL;
                     p->in_session = false;
                     break;
@@ -193,8 +192,8 @@ void *stub_client(void *arg) {
 
             /* User join just created session */
             pthread_mutex_lock(&lock_session_list);
-            new_client->session_enrolment = add_session(new_client->session_enrolment, session_count);
             session_list = join_session(session_list, session_count, new_client);
+            new_client->session_enrolment = add_session(new_client->session_enrolment, session_count);
             pthread_mutex_unlock(&lock_session_list);
 
             /* update online user status */
@@ -216,6 +215,23 @@ void *stub_client(void *arg) {
             printf("User %s has successfully created session NO.%d.\n", new_client->UID, session_count - 1);
         } else if(recv_packet.type == MESSAGE) {
             printf("User %s is requesting to send message.\n", new_client->UID);
+            bool cc = false;
+            pthread_mutex_lock(&lock_online_user);
+            for(User *p = online_user_list; p; p = p->next) {
+                if(strcmp(p->UID, source) == 0) {
+                    if (!p->in_session) {
+                        cc = true;
+                    }
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&lock_online_user);
+            
+            if (cc) {
+                printf("This user is currently not in a session.\n");
+                continue;
+            }
+            
             to_send = false;
             /* pack up the packet to send */
             send_packet.type = MESSAGE;
@@ -227,15 +243,13 @@ void *stub_client(void *arg) {
             packetToString(&send_packet, buffer);
 
             /* broadcast */
-            for(Session *p = new_client->session_enrolment; p; p = p->next) {
-                Session *sess_to_send = session_check(session_list, p->SID);
-                if(sess_to_send == NULL) continue;
-                for(User *curr_user = sess_to_send->enrol_list; curr_user; curr_user = curr_user->next) {
-                    int sd = send(curr_user -> sockfd, buffer, BUFF_SIZE-1, 0);
-                    if(sd < 0) {
-                        perror("Failed when sending...\n");
-                        exit(1);
-                    }
+            Session *sess_to_send = session_check(session_list, new_client->session_enrolment->SID);
+            if(sess_to_send == NULL) continue;
+            for(User *curr_user = sess_to_send->enrol_list; curr_user; curr_user = curr_user->next) {
+                int sd = send(curr_user->sockfd, buffer, BUFF_SIZE-1, 0);
+                if(sd < 0) {
+                    perror("Failed when sending...\n");
+                    exit(1);
                 }
             }
         } else if (recv_packet.type == QUERY) {
@@ -246,7 +260,7 @@ void *stub_client(void *arg) {
             to_send = true;
 
             for(User *p = online_user_list; p; p = p->next) {
-                cursor += sprintf((char *)(send_packet.data) + cursor, "%s", p->UID);
+                cursor += sprintf(send_packet.data + cursor, "%s", p->UID);
                 for(Session *ss = p->session_enrolment; ss; ss = ss->next) {
                     cursor += sprintf(send_packet.data + cursor, "\t%d", ss->SID);
                 }
@@ -274,28 +288,28 @@ void *stub_client(void *arg) {
     close(new_client->sockfd);
 
     /* client quits, so remove it from any data structure containing it */
-    if(online){
-        printf("User %s has exited.\n", new_client->UID);
-        
-        for(Session *curr = new_client->session_enrolment; curr; curr = curr->next) {
-            pthread_mutex_lock(&lock_session_list);
-            session_list = leave_session(session_list, curr->SID, new_client);
-            pthread_mutex_unlock(&lock_session_list);
-        }
+    if(!online) return NULL;
+    
+    printf("User %s has exited.\n", new_client->UID);
 
-        for(User *p = online_user_list; p; p = p->next) {
-            if(strcmp(source, p->UID) == 0) {
-                free_session_list(p->session_enrolment);
-                break;
-            }
-        }
-        
-        online_user_list = remove_user(online_user_list, new_client);
-
-        free_session_list(new_client->session_enrolment);
-        
-        free(new_client);
+    for(Session *curr = new_client->session_enrolment; curr; curr = curr->next) {
+        pthread_mutex_lock(&lock_session_list);
+        session_list = leave_session(session_list, curr->SID, new_client);
+        pthread_mutex_unlock(&lock_session_list);
     }
+
+    for(User *p = online_user_list; p; p = p->next) {
+        if(strcmp(source, p->UID) == 0) {
+            free_session_list(p->session_enrolment);
+            break;
+        }
+    }
+
+    online_user_list = remove_user(online_user_list, new_client);
+
+    free_session_list(new_client->session_enrolment);
+
+    free(new_client);
 }
 
 
