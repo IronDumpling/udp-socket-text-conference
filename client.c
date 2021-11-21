@@ -17,9 +17,8 @@ void logIn(char*, int*, pthread_t*);
 void logOut(int*, pthread_t*);
 void joinSession (char*, int*);
 void leaveSession (int);
-void createSession (int);
+void createSession (char*, int);
 void list (int);
-void quit(int);
 void sendText (int);
 
 // Global Constants
@@ -93,7 +92,7 @@ int main()
         }
         // Command 5: create session
         else if(!strcmp(input, CREATE_SESSION_CMD)){
-            createSession(socketFD);
+            createSession(input, socketFD);
         }
         // Command 6: List Users
         else if(!strcmp(input, LIST_CMD)){
@@ -113,7 +112,6 @@ int main()
     }
 
     printf("Quit Text Conference Successfully.\n");
-
     return 0;
 }
 
@@ -137,7 +135,7 @@ void *receive(void *socketVoidFD) {
         // Receive Message
         length = recv(*socketFD, recvBuff, BUFF_SIZE - 1, 0);
         if(length == -1) {
-            perror("Receive message failed.\n");
+            fprintf(stderr, "receive message failed.\n");
             return NULL;
         }
 
@@ -195,12 +193,12 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
     // Corner Case 1: Too Few Arguments
     if(!clientID || !password || !serverIP || !serverPort){
-        perror("Too few arguments: /login <client_id> <password> <server_ip> <server_port>");
+        printf("Too few arguments: /login <client_id> <password> <server_ip> <server_port>\n");
         return;
     }
     // Corner Case 2: Re-Login
     else if (*socketFD != INVALID_SOCKET) {
-        perror("Already login");
+        fprintf(stdout, "already login.\n");
         return;
     }
     // Normal Case
@@ -215,7 +213,7 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
         // Step 2. Set up Address Info
         if(getaddrinfo(serverIP, serverPort, &hints, &servInfo) != 0){
-            perror("Get address failed");
+            fprintf(stderr, "get address failed.\n");
             return;
         }
 
@@ -264,7 +262,7 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
 
         // Step 5. Send Message
         if(send(*socketFD, recvBuff, BUFF_SIZE - 1, 0) ==  -1) {
-            perror("Send message failed");
+            fprintf(stderr, "send message failed.\n");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
@@ -273,26 +271,26 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
         // Receive Message
         unsigned int length = recv(*socketFD, recvBuff, BUFF_SIZE - 1, 0);
         if(length == -1) {
-            perror("Receive message failed");
+            fprintf(stderr, "receive message failed.\n");
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
         }
 
         // Deserialization
-        //recvBuff[length];
         stringToPacket(recvBuff, &Message);
 
         // Step 6. Response to Message
         if(Message.type == LO_ACK && pthread_create(recvThread, NULL, receive, socketFD) == 0) {
             printf("Login succeed.\n");
         } else if(Message.type == LO_NAK) {
-            perror("Login failed");
+            fprintf(stdout, "login failed. Detail: %s\n", Message.data);
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
         } else {
-            perror("Unexpected message received");
+            fprintf(stdout, "unexpected message received. "
+                            "Detail: type %d, data %s\n", Message.type, Message.data);
             close(*socketFD);
             *socketFD = INVALID_SOCKET;
             return;
@@ -318,14 +316,14 @@ void logOut(int *socketFD, pthread_t *recvThread) {
     packetToString(&Message, recvBuff);
 
     if(send(*socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1) {
-        perror("Send message failed");
+        fprintf(stderr, "send message failed.\n");
         return;
     }
 
     if(pthread_cancel(*recvThread) != 0) {
-        perror("Logout failed");
+        fprintf(stderr, "logout failed.\n");
     } else {
-        printf("Logout succeed.\n");
+        fprintf(stdout, "logout succeed.\n");
     }
 
     inSession = false;
@@ -355,7 +353,7 @@ void joinSession (char *input, int *socketFD) {
 
         // Corner Case 3.
         if(!sessionID){
-            perror("Too few arguments: /joinsession <session_id>");
+            printf("Too few arguments: /joinsession <session_id>\n");
         }
         // Common Case
         else{
@@ -387,12 +385,12 @@ void joinSession (char *input, int *socketFD) {
 void leaveSession (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet");
+        fprintf(stdout, "haven't login yet.\n");
         return;
     }
     // Corner Case 2.
     else if (!inSession){
-        perror("Haven't joined a session yet");
+        fprintf(stdout, "haven't joined a session yet.\n");
         return;
     } else{
         // Fill Message struct
@@ -418,28 +416,40 @@ void leaveSession (int socketFD) {
  * Function 5. Create New Session
  * @param socketFD
  */
-void createSession (int socketFD) {
+void createSession (char *input, int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet");
+        fprintf(stdout, "haven't login yet.\n");
         return;
     }
     // Corner Case 2.
     else if (inSession){
-        perror("Already joined a session");
+        fprintf(stdout, "already joined a session.\n");
         return;
-    } else{
+    }
+    // Corner Case 3.
+    input = strtok(NULL, " ");
+    char *sessionID = input;
+
+    if (!sessionID){
+        fprintf(stdout, "usage: /createsession <session_id>\n");
+        return;
+    }
+    // Normal Case
+    else{
         // Fill Message struct
         struct message Message;
         Message.type = NEW_SESS;
-        Message.size = 0;
+        // Message.size = 0;
+        Message.size = strlen(sessionID);
+        strcpy(Message.data, sessionID);
 
         // Serialization
         packetToString(&Message, recvBuff);
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed");
+            fprintf(stderr, "send message failed.\n");
             return;
         }
     }
@@ -452,7 +462,7 @@ void createSession (int socketFD) {
 void list (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet");
+        fprintf(stdout, "haven't login yet.\n");
         return;
     }
     // Common Case
@@ -467,7 +477,7 @@ void list (int socketFD) {
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed");
+            fprintf(stderr, "send message failed.\n");
             return;
         }
     }
@@ -481,9 +491,15 @@ void list (int socketFD) {
 void sendText (int socketFD) {
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
-        perror("Haven't login yet.\n");
+        fprintf(stdout, "haven't login yet.\n");
         return;
     }
+    // Corner Case 2.
+    else if(!inSession) {
+        fprintf(stdout, "haven't joined a session yet.\n");
+        return;
+    }
+
     // Common Case
     else{
         // Fill Message struct
@@ -497,9 +513,8 @@ void sendText (int socketFD) {
 
         // Send to Server
         if(send(socketFD, recvBuff, BUFF_SIZE - 1, 0) == -1){
-            perror("Send Message Failed.\n");
+            fprintf(stderr, "send message failed.\n");
             return;
         }
     }
-
 }
