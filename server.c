@@ -28,11 +28,11 @@ Session *session_list = NULL;
 void *stub_client(void *arg) {
     /* variables initialization */
     User *new_client = (User*)arg;
-    char buffer[BUF_SIZE];
+    char buffer[BUFF_SIZE];
     char source[MAX_NAME];
     int msg_len;
-    Packet recv_packet;
-    Packet send_packet;
+    struct message recv_packet;
+    struct message send_packet;
     bool online = false;
     bool to_exit = false;
 
@@ -42,11 +42,11 @@ void *stub_client(void *arg) {
     
     /* start to hear from the client */
     while(true) {
-        memset(buffer, 0, sizeof(char) * BUF_SIZE);
-        memset(&recv_packet, 0, sizeof(Packet));
-        memset(&send_packet, 0, sizeof(Packet));		
+        memset(buffer, 0, BUFF_SIZE);
+        memset(&recv_packet, 0, sizeof(struct message));
+        memset(&send_packet, 0, sizeof(struct message));		
 
-        msg_len = recv(new_client->sockfd, buffer, BUF_SIZE - 1, 0);
+        msg_len = recv(new_client->sockfd, buffer, BUFF_SIZE - 1, 0);
         if (msg_len < 0) {
             perror("Failed at recv...\n");
             exit(1);
@@ -223,7 +223,7 @@ void *stub_client(void *arg) {
             strcpy(send_packet.data, recv_packet.data);
             send_packet.size = strlen(send_packet.data);
 
-            memset(buffer, 0, BUF_SIZE);
+            memset(buffer, 0, BUFF_SIZE);
             packetToString(&send_packet, buffer);
 
             /* broadcast */
@@ -231,7 +231,7 @@ void *stub_client(void *arg) {
                 Session *sess_to_send = session_check(session_list, p->SID);
                 if(sess_to_send == NULL) continue;
                 for(User *curr_user = sess_to_send->enrol_list; curr_user; curr_user = curr_user->next) {
-                    int sd = send(curr_user -> sockfd, buffer, BUF_SIZE-1, 0);
+                    int sd = send(curr_user -> sockfd, buffer, BUFF_SIZE-1, 0);
                     if(sd < 0) {
                         perror("Failed when sending...\n");
                         exit(1);
@@ -260,9 +260,9 @@ void *stub_client(void *arg) {
         if(to_send) {
             memcpy(send_packet.source, new_client->UID, 32);
             send_packet.size = strlen(send_packet.data);
-            memset(buffer, 0, BUF_SIZE);
+            memset(buffer, 0, BUFF_SIZE);
             packetToString(&send_packet, buffer);
-            msg_len = send(new_client->sockfd, buffer, BUF_SIZE-1, 0);
+            msg_len = send(new_client->sockfd, buffer, BUFF_SIZE-1, 0);
             if(msg_len < 0) {
                 perror("Failed when sending...\n");
             }
@@ -335,7 +335,7 @@ int main() {
     addr.ai_flags = AI_PASSIVE;
     getaddrinfo(NULL, port, &addr, &svinfo);
 
-    // loop and bind the first available one
+    /* loop and bind the first available one */
     int sockfd;
     int optval = 1;
     struct addrinfo *curr = svinfo;
