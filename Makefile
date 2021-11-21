@@ -1,26 +1,14 @@
-CFLAGS := -g -Wall -Werror
-LOADLIBES := -lm
-TARGETS := client server
+TARGET = server client
+DEPS = message.h database.h
+CFLAGS = -lpthread
 
-# Make sure that 'all' is the first target
-all: depend $(TARGETS)
+all:  ${TARGET}
+
+server: server.c ${DEPS}
+	gcc -o server server.c ${CFLAGS}
+
+client: client.c ${DEPS}
+	gcc -o client client.c ${CFLAGS}
 
 clean:
-	rm -rf core *.o $(TARGETS)
-
-realclean: clean
-	rm -rf *~ *.bak .depend *.log *.out
-
-tags:
-	etags *.c *.h
-
-deliver: client.o
-
-server: server.o
-
-depend:
-	$(CC) -MM *.c > .depend
-
-ifeq (.depend,$(wildcard .depend))
-include .depend
-endif
+	rm -f ${TARGET}
