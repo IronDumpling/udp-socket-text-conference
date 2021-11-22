@@ -35,7 +35,8 @@ void *stub_client(void *arg) {
     struct message send_packet;
     bool online = false;
     bool to_exit = false;
-
+    bool has_exited = false;
+    
     printf("A new thread has been created for the new client.\n");
     
     bool to_send = false;
@@ -156,6 +157,7 @@ void *stub_client(void *arg) {
                 pthread_mutex_unlock(&lock_online_user);
             }
         } else if(recv_packet.type == LEAVE_SESS) {
+            LEAVESESSION:
             printf("User %s is requesting to leave all joined sessions.\n", new_client->UID);
 
             /* delete current joined session from the user */
@@ -283,6 +285,11 @@ void *stub_client(void *arg) {
         }
         
         if(to_exit) break;
+    }
+    
+    if (!has_exited) {
+        has_exited = true;
+        goto LEAVESESSION;
     }
 
     close(new_client->sockfd);
