@@ -52,6 +52,9 @@ int main()
     unsigned int tokLength;
     int socketFD = INVALID_SOCKET;
     pthread_t recvThread;
+    
+    printf("--------------------\n");
+    printf("Client activation succeed, please login.\n");
 
     // Waiting for new commands
     while(true){
