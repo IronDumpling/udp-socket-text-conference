@@ -52,9 +52,6 @@ int main()
     unsigned int tokLength;
     int socketFD = INVALID_SOCKET;
     pthread_t recvThread;
-    
-    printf("--------------------\n");
-    printf("Client activation succeed, please login.\n");
 
     // Waiting for new commands
     while(true){
@@ -184,6 +181,18 @@ void *receive(void *socketVoidFD) {
             fprintf(stdout, "User id\t\tSession ids\n%s", Message.data);
         } else if (Message.type == MESSAGE){
             fprintf(stdout, "%s: %s\n", Message.source, Message.data);
+        } else if (Message.type == PRIV_MESSAGE){
+            fprintf(stdout, "@Private Chat from %s: %s\n", Message.source, Message.data);
+        } else if (Message.type == PRIV_NE) {
+            printf("The receiver UID of this private message is not existing.\n");
+        } else if (Message.type == PRIV_OFF) {
+            printf("The receiver of this private message is currently offline.\n");
+        } else if (Message.type == PRIV_OK) {
+            printf("Your private message has been successfully delivered.\n");
+//        } else if (Message.type == REG_NO) {
+//            printf("The UID you selected has been occupied.\n");
+//        } else if (Message.type == REG_OK) {
+//            printf("You have successfully registered!\n");
         } else {
             fprintf(stdout, "Unexpected packet received: type %d, data %s\n",
                     Message.type, Message.data);
@@ -200,8 +209,6 @@ void *receive(void *socketVoidFD) {
  * @param recvThread
  */
 void logIn(char *input, int *socketFD, pthread_t *recvThread) {
-    printf("--------------------\n");
-    
     // Login Information
     char *clientID, *password, *serverIP, *serverPort;
 
@@ -328,8 +335,6 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
  * @param recvThread
  */
 void logOut(int *socketFD, pthread_t *recvThread) {
-    printf("--------------------\n");
-    
     if(*socketFD == INVALID_SOCKET){
         perror("Haven't login yet");
         return;
@@ -363,8 +368,6 @@ void logOut(int *socketFD, pthread_t *recvThread) {
  * @param socketFD
  */
 void joinSession (char *input, int *socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(*socketFD == INVALID_SOCKET) {
         perror("Haven't login yet");
@@ -411,8 +414,6 @@ void joinSession (char *input, int *socketFD) {
  * @param socketFD
  */
 void leaveSession (int socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -447,8 +448,6 @@ void leaveSession (int socketFD) {
  * @param socketFD
  */
 void createSession (char *input, int socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -492,8 +491,6 @@ void createSession (char *input, int socketFD) {
  * @param socketFD
  */
 void list (int socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -523,8 +520,6 @@ void list (int socketFD) {
  * @param socketFD
  */
 void sendText (int socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -560,8 +555,6 @@ void sendText (int socketFD) {
  * @param socketFD
  */
 void privateText (char *input, int socketFD) {
-    printf("--------------------\n");
-    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -591,7 +584,7 @@ void privateText (char *input, int socketFD) {
         struct message Message;
         Message.type = PRIV_MESSAGE;
         Message.size = strlen(recvBuff);
-        strncpy(Message.data, clientID, MAX_DATA);
+        strncpy(Message.source, clientID, MAX_NAME);
         strncpy(Message.data, text, MAX_DATA);
 
         // Serialization
@@ -611,8 +604,6 @@ void privateText (char *input, int socketFD) {
  * @param socketFD
  */
 void registerUser(char *input, int *socketFD) {
-    printf("--------------------\n");
-    
     // Login Information
     char *clientID, *password, *serverIP, *serverPort;
 
@@ -694,6 +685,7 @@ void registerUser(char *input, int *socketFD) {
     strncpy(Message.data, password, MAX_DATA);
 
     // Serialization
+    memset(recvBuff, 0, BUFF_SIZE);
     packetToString(&Message, recvBuff);
 
     // Step 5. Send Message
@@ -714,22 +706,22 @@ void registerUser(char *input, int *socketFD) {
     }
 
     // Deserialization
+    memset(&Message, 0, sizeof(struct message));
     stringToPacket(recvBuff, &Message);
 
     // Step 6. Response to Message
-    if(Message.type == LO_ACK) {
-        printf("Register succeed.\n");
-    } else if(Message.type == LO_NAK) {
-        fprintf(stdout, "register failed. Detail: %s\n", Message.data);
-        close(*socketFD);
+    if(Message.type == REG_OK) {
+        printf("Successfully registered.\n");
+        *socketFD = INVALID_SOCKET;
+        return;
+    } else if(Message.type == REG_NO) {
+        fprintf(stdout, "Failed to register. Detail:\n  This UID has been registered, please try a new one.\n");
         *socketFD = INVALID_SOCKET;
         return;
     } else {
         fprintf(stdout, "unexpected message received. "
                         "Detail: type %d, data %s\n", Message.type, Message.data);
-        close(*socketFD);
         *socketFD = INVALID_SOCKET;
         return;
     }
 }
-
