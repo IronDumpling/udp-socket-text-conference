@@ -200,6 +200,8 @@ void *receive(void *socketVoidFD) {
  * @param recvThread
  */
 void logIn(char *input, int *socketFD, pthread_t *recvThread) {
+    printf("--------------------\n");
+    
     // Login Information
     char *clientID, *password, *serverIP, *serverPort;
 
@@ -326,6 +328,8 @@ void logIn(char *input, int *socketFD, pthread_t *recvThread) {
  * @param recvThread
  */
 void logOut(int *socketFD, pthread_t *recvThread) {
+    printf("--------------------\n");
+    
     if(*socketFD == INVALID_SOCKET){
         perror("Haven't login yet");
         return;
@@ -359,6 +363,8 @@ void logOut(int *socketFD, pthread_t *recvThread) {
  * @param socketFD
  */
 void joinSession (char *input, int *socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(*socketFD == INVALID_SOCKET) {
         perror("Haven't login yet");
@@ -405,6 +411,8 @@ void joinSession (char *input, int *socketFD) {
  * @param socketFD
  */
 void leaveSession (int socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -439,6 +447,8 @@ void leaveSession (int socketFD) {
  * @param socketFD
  */
 void createSession (char *input, int socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -482,6 +492,8 @@ void createSession (char *input, int socketFD) {
  * @param socketFD
  */
 void list (int socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -511,6 +523,8 @@ void list (int socketFD) {
  * @param socketFD
  */
 void sendText (int socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -546,6 +560,8 @@ void sendText (int socketFD) {
  * @param socketFD
  */
 void privateText (char *input, int socketFD) {
+    printf("--------------------\n");
+    
     // Corner Case 1.
     if(socketFD == INVALID_SOCKET) {
         fprintf(stdout, "haven't login yet.\n");
@@ -595,6 +611,8 @@ void privateText (char *input, int socketFD) {
  * @param socketFD
  */
 void registerUser(char *input, int *socketFD) {
+    printf("--------------------\n");
+    
     // Login Information
     char *clientID, *password, *serverIP, *serverPort;
 
