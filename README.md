@@ -2,7 +2,7 @@
 ECE 361 Lab 4 &amp; 5
 
 command list
-  /login <client_id> <password> <server_ip> <server_port>
+  /login <client_id> <password> <server_ip> <server_port> &n
   /register <client_id> <password> <server_ip> <server_port>
   /logout
   /joinsession <session_id>
