@@ -15,7 +15,7 @@
 ### Create New Session
   /createsession <session_id>
 ### Send Private Message
-  /private <client_id> <text>
+  /private <client_id> <text_message>
 ### List Online User Status
   /list
 ### User Logout and Terminate Program
