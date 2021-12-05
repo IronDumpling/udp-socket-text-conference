@@ -34,7 +34,12 @@ enum messageType{
     MESSAGE,
     PRIV_MESSAGE,
     QUERY,
-    QU_ACK
+    QU_ACK,
+    PRIV_NE,
+    PRIV_OFF,
+    PRIV_OK,
+    REG_NO,
+    REG_OK
 };
 
 /**
