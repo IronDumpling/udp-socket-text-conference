@@ -196,6 +196,8 @@ void *receive(void *socketVoidFD) {
 //            printf("The UID you selected has been occupied.\n");
 //        } else if (Message.type == REG_OK) {
 //            printf("You have successfully registered!\n");
+        } else if (Message.type == PRIV_SELF) {
+            printf("You sent a private message as a self note.\n");
         } else {
             fprintf(stdout, "Unexpected packet received: type %d, data %s\n",
                     Message.type, Message.data);
