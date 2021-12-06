@@ -38,6 +38,7 @@ enum messageType{
     PRIV_NE,
     PRIV_OFF,
     PRIV_OK,
+    PRIV_SELF,
     REG_NO,
     REG_OK
 };
