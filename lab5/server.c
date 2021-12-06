@@ -324,6 +324,9 @@ void *stub_client(void *arg) {
                 /* the target client is registered but offline */
                 printf("The receiver is currently offline...\n");
                 send_packet.type = PRIV_OFF;
+            } else if (strcmp(receiver->UID, new_client->UID) == 0) {
+                printf("The receiver is sending message as a self note...\n");
+                send_packet.type = PRIV_SELF;
             } else {
                 memset(&send_packet, 0, sizeof(struct message));
                 /* pack up the packet to send */
